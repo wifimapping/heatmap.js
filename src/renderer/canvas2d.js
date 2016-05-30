@@ -20,12 +20,13 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     return paletteCtx.getImageData(0, 0, 256, 1).data;
   };
 
-  var _getPointTemplate = function(radius, blurFactor) {
+  var _getPointTemplate = function(radius, blurFactor, templateAlpha) {
     var tplCanvas = document.createElement('canvas');
     var tplCtx = tplCanvas.getContext('2d');
     var x = radius;
     var y = radius;
     tplCanvas.width = tplCanvas.height = radius*2;
+    tplCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
 
     if (blurFactor == 1) {
       tplCtx.beginPath();
@@ -41,8 +42,7 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     }
 
 
-
-    return tplCanvas;
+    return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height).data;
   };
 
   var _prepareData = function(data) {
@@ -168,36 +168,60 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
       // on a point basis?
       var blur = 1 - this._blur;
 
+      //var img = this.shadowCtx.getImageData(0, 0, this.shadowCanvas.width,  this.shadowCanvas.height);
+      //var imgData = img.data;
+
       while(dataLen--) {
 
         var point = data[dataLen];
 
         var x = point.x;
         var y = point.y;
-        var radius = point.radius;
+        var radius = point.radius | 0;
         // if value is bigger than max
         // use max as value
         var value = Math.min(point.value, max);
+        value = Math.max(value, min);
         var rectX = x - radius;
         var rectY = y - radius;
         var shadowCtx = this.shadowCtx;
-
-
-
+        var templateAlpha = (value-min)/(max-min);
+        templateAlpha = ((templateAlpha * 10 + 1) | 0) / 10;
 
         var tpl;
-        if (!this._templates[radius]) {
-          this._templates[radius] = tpl = _getPointTemplate(radius, blur);
-        } else {
-          tpl = this._templates[radius];
-        }
-        // value from minimum / value range
-        // => [0, 1]
-        var templateAlpha = (value-min)/(max-min);
-        // this fixes #176: small values are not visible because globalAlpha < .01 cannot be read from imageData
-        shadowCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
+		if (!this._templates[radius]) {
+			this._templates[radius] = [];
+		}
 
-        shadowCtx.drawImage(tpl, rectX, rectY);
+        if (!this._templates[radius][templateAlpha]) {
+          this._templates[radius][templateAlpha] = tpl = _getPointTemplate(radius, blur, templateAlpha);
+        } else {
+          tpl = this._templates[radius][templateAlpha];
+        }
+
+        /*var idx;
+        var width = radius*2;
+        for (var i = 0; i < width; i++) {
+            for (var j = 0; j < width; j++) {
+                idx = (i + rectY)*this.shadowCanvas.width*4 + (j + rectX)*4 + 3;
+                imgData[idx] =
+                    Math.max(
+                        imgData[idx],
+                        tpl[i*width*4 + j*4 + 3]
+                    );
+            }
+        }*/
+
+        var img = this.shadowCtx.getImageData(rectX, rectY, radius*2, radius*2);
+		var imgData = img.data;
+
+		var len = imgData.length;
+
+		for (var i = 3; i < len; i+= 4) {
+			imgData[i] = Math.max(imgData[i], tpl[i]);
+		}
+
+		this.shadowCtx.putImageData(img, rectX, rectY);
 
         // update renderBoundaries
         if (rectX < this._renderBoundaries[0]) {
@@ -214,6 +238,8 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
           }
 
       }
+
+      //this.shadowCtx.putImageData(img, 0, 0);
     },
     _colorize: function() {
       var x = this._renderBoundaries[0];

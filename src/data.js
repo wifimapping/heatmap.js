@@ -4,6 +4,7 @@ var Store = (function StoreClosure() {
     this._coordinator = {};
     this._data = [];
     this._radi = [];
+    this._counts = [];
     this._min = 0;
     this._max = 1;
     this._xField = config['xField'] || config.defaultXField;
@@ -23,6 +24,7 @@ var Store = (function StoreClosure() {
         var x = dataPoint[this._xField];
         var y = dataPoint[this._yField];
         var radi = this._radi;
+        var counts = this._counts;
         var store = this._data;
         var max = this._max;
         var min = this._min;
@@ -32,13 +34,23 @@ var Store = (function StoreClosure() {
         if (!store[x]) {
           store[x] = [];
           radi[x] = [];
+          counts[x] = [];
         }
 
         if (!store[x][y]) {
           store[x][y] = value;
           radi[x][y] = radius;
+          counts[x][y] = 1;
         } else {
-          store[x][y] += value;
+          // Density
+          //store[x][y] += value;
+
+          // Max
+          store[x][y] = value > store[x][y] ? value : store[x][y];
+
+          // Average
+          //counts[x][y]++;
+          //store[x][y] = value/counts[x][y] + store[x][y]*((counts[x][y]-1)/(counts[x][y]));
         }
 
         if (store[x][y] > max) {
@@ -49,13 +61,13 @@ var Store = (function StoreClosure() {
           }
           return false;
         } else{
-          return { 
-            x: x, 
+          return {
+            x: x,
             y: y,
-            value: value, 
+            value: value,
             radius: radius,
             min: min,
-            max: max 
+            max: max
           };
         }
     },
@@ -96,7 +108,7 @@ var Store = (function StoreClosure() {
           this.addData.call(this, dataArr[dataLen]);
         }
       } else {
-        // add to store  
+        // add to store
         var organisedEntry = this._organiseData(arguments[0], true);
         if (organisedEntry) {
           this._coordinator.emit('renderpartial', {
@@ -122,7 +134,7 @@ var Store = (function StoreClosure() {
       }
       this._max = data.max;
       this._min = data.min || 0;
-      
+
       this._onExtremaChange();
       this._coordinator.emit('renderall', this._getInternalData());
       return this;
@@ -146,54 +158,16 @@ var Store = (function StoreClosure() {
       this._coordinator = coordinator;
     },
     _getInternalData: function() {
-      return { 
+      return {
         max: this._max,
-        min: this._min, 
+        min: this._min,
         data: this._data,
-        radi: this._radi 
+        radi: this._radi
       };
     },
     getData: function() {
       return this._unOrganizeData();
-    }/*,
-
-      TODO: rethink.
-
-    getValueAt: function(point) {
-      var value;
-      var radius = 100;
-      var x = point.x;
-      var y = point.y;
-      var data = this._data;
-
-      if (data[x] && data[x][y]) {
-        return data[x][y];
-      } else {
-        var values = [];
-        // radial search for datapoints based on default radius
-        for(var distance = 1; distance < radius; distance++) {
-          var neighbors = distance * 2 +1;
-          var startX = x - distance;
-          var startY = y - distance;
-
-          for(var i = 0; i < neighbors; i++) {
-            for (var o = 0; o < neighbors; o++) {
-              if ((i == 0 || i == neighbors-1) || (o == 0 || o == neighbors-1)) {
-                if (data[startY+i] && data[startY+i][startX+o]) {
-                  values.push(data[startY+i][startX+o]);
-                }
-              } else {
-                continue;
-              } 
-            }
-          }
-        }
-        if (values.length > 0) {
-          return Math.max.apply(Math, values);
-        }
-      }
-      return false;
-    }*/
+    }
   };
 
 

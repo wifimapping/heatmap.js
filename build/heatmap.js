@@ -4,7 +4,7 @@
  * Copyright 2008-2016 Patrick Wied <heatmapjs@patrick-wied.at> - All rights reserved.
  * Dual licensed under MIT and Beerware license 
  *
- * :: 2016-02-04 21:25
+ * :: 2016-05-30 12:28
  */
 ;(function (name, context, factory) {
 
@@ -38,6 +38,7 @@ var Store = (function StoreClosure() {
     this._coordinator = {};
     this._data = [];
     this._radi = [];
+    this._counts = [];
     this._min = 0;
     this._max = 1;
     this._xField = config['xField'] || config.defaultXField;
@@ -50,13 +51,14 @@ var Store = (function StoreClosure() {
   };
 
   var defaultRadius = HeatmapConfig.defaultRadius;
-  var counts = [];
+
   Store.prototype = {
     // when forceRender = false -> called from setData, omits renderall event
     _organiseData: function(dataPoint, forceRender) {
         var x = dataPoint[this._xField];
         var y = dataPoint[this._yField];
         var radi = this._radi;
+        var counts = this._counts;
         var store = this._data;
         var max = this._max;
         var min = this._min;
@@ -66,18 +68,23 @@ var Store = (function StoreClosure() {
         if (!store[x]) {
           store[x] = [];
           radi[x] = [];
-		  counts[x] = [];
+          counts[x] = [];
         }
 
         if (!store[x][y]) {
           store[x][y] = value;
           radi[x][y] = radius;
-		  counts[x][y] = 1;
+          counts[x][y] = 1;
         } else {
+          // Density
           //store[x][y] += value;
-		  counts[x][y]++;
-		  //store[x][y] = value > store[x][y] ? value : store[x][y];
-		  store[x][y] = value/counts[x][y] + store[x][y]*((counts[x][y]-1)/(counts[x][y]));
+
+          // Max
+          store[x][y] = value > store[x][y] ? value : store[x][y];
+
+          // Average
+          //counts[x][y]++;
+          //store[x][y] = value/counts[x][y] + store[x][y]*((counts[x][y]-1)/(counts[x][y]));
         }
 
         if (store[x][y] > max) {
@@ -88,13 +95,13 @@ var Store = (function StoreClosure() {
           }
           return false;
         } else{
-          return { 
-            x: x, 
+          return {
+            x: x,
             y: y,
-            value: value, 
+            value: value,
             radius: radius,
             min: min,
-            max: max 
+            max: max
           };
         }
     },
@@ -135,7 +142,7 @@ var Store = (function StoreClosure() {
           this.addData.call(this, dataArr[dataLen]);
         }
       } else {
-        // add to store  
+        // add to store
         var organisedEntry = this._organiseData(arguments[0], true);
         if (organisedEntry) {
           this._coordinator.emit('renderpartial', {
@@ -161,7 +168,7 @@ var Store = (function StoreClosure() {
       }
       this._max = data.max;
       this._min = data.min || 0;
-      
+
       this._onExtremaChange();
       this._coordinator.emit('renderall', this._getInternalData());
       return this;
@@ -185,59 +192,22 @@ var Store = (function StoreClosure() {
       this._coordinator = coordinator;
     },
     _getInternalData: function() {
-      return { 
+      return {
         max: this._max,
-        min: this._min, 
+        min: this._min,
         data: this._data,
-        radi: this._radi 
+        radi: this._radi
       };
     },
     getData: function() {
       return this._unOrganizeData();
-    }/*,
-
-      TODO: rethink.
-
-    getValueAt: function(point) {
-      var value;
-      var radius = 100;
-      var x = point.x;
-      var y = point.y;
-      var data = this._data;
-
-      if (data[x] && data[x][y]) {
-        return data[x][y];
-      } else {
-        var values = [];
-        // radial search for datapoints based on default radius
-        for(var distance = 1; distance < radius; distance++) {
-          var neighbors = distance * 2 +1;
-          var startX = x - distance;
-          var startY = y - distance;
-
-          for(var i = 0; i < neighbors; i++) {
-            for (var o = 0; o < neighbors; o++) {
-              if ((i == 0 || i == neighbors-1) || (o == 0 || o == neighbors-1)) {
-                if (data[startY+i] && data[startY+i][startX+o]) {
-                  values.push(data[startY+i][startX+o]);
-                }
-              } else {
-                continue;
-              } 
-            }
-          }
-        }
-        if (values.length > 0) {
-          return Math.max.apply(Math, values);
-        }
-      }
-      return false;
-    }*/
+    }
   };
 
 
   return Store;
 })();
+
 
 var Canvas2dRenderer = (function Canvas2dRendererClosure() {
 
@@ -260,12 +230,13 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     return paletteCtx.getImageData(0, 0, 256, 1).data;
   };
 
-  /*var _getPointTemplate = function(radius, blurFactor) {
+  var _getPointTemplate = function(radius, blurFactor, templateAlpha) {
     var tplCanvas = document.createElement('canvas');
     var tplCtx = tplCanvas.getContext('2d');
     var x = radius;
     var y = radius;
     tplCanvas.width = tplCanvas.height = radius*2;
+    tplCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
 
     if (blurFactor == 1) {
       tplCtx.beginPath();
@@ -281,67 +252,8 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     }
 
 
-	return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height).data;
-    return tplCanvas;
-  };*/
-  
-   var _getPointTemplate = function(radius, blurFactor, templateAlpha) {
-    var tplCanvas = document.createElement('canvas');
-    var tplCtx = tplCanvas.getContext('2d');
-    var x = radius;
-    var y = radius;
-    tplCanvas.width = tplCanvas.height = radius*2;
-	tplCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
-
-    if (blurFactor == 1) {
-      tplCtx.beginPath();
-      tplCtx.arc(x, y, radius, 0, 2 * Math.PI, false);
-      tplCtx.fillStyle = 'rgba(0,0,0,1)';
-      tplCtx.fill();
-    } else {
-      var gradient = tplCtx.createRadialGradient(x, y, radius*blurFactor, x, y, radius);
-      gradient.addColorStop(0, 'rgba(0,0,0,1)');
-      gradient.addColorStop(1, 'rgba(0,0,0,0)');
-      tplCtx.fillStyle = gradient;
-      tplCtx.fillRect(0, 0, 2*radius, 2*radius);
-    }
-
-
-	return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height).data;
-    return tplCanvas;
+    return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height).data;
   };
-  
-  /*)var _getPointTemplate = function(color, radius, blurFactor) {
-    var tplCanvas = document.createElement('canvas');
-    var tplCtx = tplCanvas.getContext('2d');
-    var x = radius;
-    var y = radius;
-    tplCanvas.width = tplCanvas.height = radius*2;
-	
-	var gradient = tplCtx.createRadialGradient(x, y, radius*blurFactor, x, y, radius);
-      gradient.addColorStop(0, color + ',1)');
-	  //gradient.addColorStop(0, 'rgba(255,0,0,1)');
-	  //gradient.addColorStop(0, 'rgba(0,255,0,.5)');
-      //gradient.addColorStop(1, 'rgba(0,0,255,0)');
-	  gradient.addColorStop(1, color + ',0)')
-      tplCtx.fillStyle = gradient;
-      tplCtx.fillRect(0, 0, 2*radius, 2*radius);
-
-	
-	
-	tplCtx.beginPath();
-	
-	tplCtx.arc(x, y, radius, 0, 2 * Math.PI, false);
-	
-	tplCtx.fillStyle = color;
-	tplCtx.fill();
-	
-
-
-
-    //return tplCanvas;
-	return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height)
-  };*/
 
   var _prepareData = function(data) {
     var renderData = [];
@@ -392,7 +304,6 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     this._height = canvas.height = shadowCanvas.height = config.height || +(computed.height.replace(/px/,''));
 
     this.shadowCtx = shadowCanvas.getContext('2d');
-	//this.shadowCtx.globalCompositeOperation = 'destination-out';
     this.ctx = canvas.getContext('2d');
 
     // @TODO:
@@ -401,8 +312,7 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     canvas.style.cssText = shadowCanvas.style.cssText = 'position:absolute;left:0;top:0;';
 
     container.style.position = 'relative';
-    //container.appendChild(shadowCanvas);
-	container.appendChild(canvas);
+    container.appendChild(canvas);
 
     this._palette = _getColorPalette(config);
     this._templates = {};
@@ -468,6 +378,9 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
       // on a point basis?
       var blur = 1 - this._blur;
 
+      //var img = this.shadowCtx.getImageData(0, 0, this.shadowCanvas.width,  this.shadowCanvas.height);
+      //var imgData = img.data;
+
       while(dataLen--) {
 
         var point = data[dataLen];
@@ -478,73 +391,47 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
         // if value is bigger than max
         // use max as value
         var value = Math.min(point.value, max);
-		value = Math.max(value, min);
+        value = Math.max(value, min);
         var rectX = x - radius;
         var rectY = y - radius;
         var shadowCtx = this.shadowCtx;
-		var templateAlpha = (value-min)/(max-min);
-		
-		// Scale to discrete tenths value
-		templateAlpha = ((templateAlpha * 10 + 1) | 0) / 10;
-		
-		if (templateAlpha == 0) {
-			continue;
-		}
+        var templateAlpha = (value-min)/(max-min);
+        templateAlpha = ((templateAlpha * 10 + 1) | 0) / 10;
 
-		/*var color = 'rgba(0,0,255,1)';
-		if (value > -80) {
-			color = 'rgba(255,0,0,1)';
-		} else if (value > -100) {
-			color = 'rgba(0,255,0,1)';
-		}*/
-		/*this._palette;
-		var offset = (255*templateAlpha | 0)*4;
-		var r = this._palette[offset-3];
-		var g = this._palette[offset-2];
-		var b = this._palette[offset-1];*/
-		/*var r = 255*templateAlpha | 0;
-		var g = 255
-		var b = 255*(1-templateAlpha) | 0;*/
-		//var color = 'rgba(' + r + ',' + g + ',' + b;// + ','1)';
-
-		
-		var tpl;
+        var tpl;
 		if (!this._templates[radius]) {
 			this._templates[radius] = [];
 		}
-		
+
         if (!this._templates[radius][templateAlpha]) {
           this._templates[radius][templateAlpha] = tpl = _getPointTemplate(radius, blur, templateAlpha);
         } else {
           tpl = this._templates[radius][templateAlpha];
         }
-        /*var tpl;
-        if (!this._templates[color]) {
-          this._templates[color] = tpl = _getPointTemplate(color, radius, blur);
-        } else {
-          tpl = this._templates[color];
+
+        /*var idx;
+        var width = radius*2;
+        for (var i = 0; i < width; i++) {
+            for (var j = 0; j < width; j++) {
+                idx = (i + rectY)*this.shadowCanvas.width*4 + (j + rectX)*4 + 3;
+                imgData[idx] =
+                    Math.max(
+                        imgData[idx],
+                        tpl[i*width*4 + j*4 + 3]
+                    );
+            }
         }*/
-        // value from minimum / value range
-        // => [0, 1]
-        
-        // this fixes #176: small values are not visible because globalAlpha < .01 cannot be read from imageData
-        //shadowCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
-		//shadowCtx.globalAlpha = .05;
-		//shadowCtx.globalCompositeOperation = 'overlay';
-		//this.shadowCtx.globalCompositeOperation = 'overlay';
-        //shadowCtx.drawImage(tpl, rectX, rectY);
-		
-		var img = this.shadowCtx.getImageData(rectX, rectY, radius*2, radius*2);
+
+        var img = this.shadowCtx.getImageData(rectX, rectY, radius*2, radius*2);
 		var imgData = img.data;
-		
+
 		var len = imgData.length;
 
 		for (var i = 3; i < len; i+= 4) {
 			imgData[i] = Math.max(imgData[i], tpl[i]);
 		}
-		
+
 		this.shadowCtx.putImageData(img, rectX, rectY);
-		
 
         // update renderBoundaries
         if (rectX < this._renderBoundaries[0]) {
@@ -561,6 +448,8 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
           }
 
       }
+
+      //this.shadowCtx.putImageData(img, 0, 0);
     },
     _colorize: function() {
       var x = this._renderBoundaries[0];
