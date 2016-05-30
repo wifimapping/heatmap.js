@@ -50,7 +50,7 @@ var Store = (function StoreClosure() {
   };
 
   var defaultRadius = HeatmapConfig.defaultRadius;
-
+  var counts = [];
   Store.prototype = {
     // when forceRender = false -> called from setData, omits renderall event
     _organiseData: function(dataPoint, forceRender) {
@@ -66,13 +66,18 @@ var Store = (function StoreClosure() {
         if (!store[x]) {
           store[x] = [];
           radi[x] = [];
+		  counts[x] = [];
         }
 
         if (!store[x][y]) {
           store[x][y] = value;
           radi[x][y] = radius;
+		  counts[x][y] = 1;
         } else {
-          store[x][y] += value;
+          //store[x][y] += value;
+		  counts[x][y]++;
+		  //store[x][y] = value > store[x][y] ? value : store[x][y];
+		  store[x][y] = value/counts[x][y] + store[x][y]*((counts[x][y]-1)/(counts[x][y]));
         }
 
         if (store[x][y] > max) {
@@ -255,7 +260,7 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     return paletteCtx.getImageData(0, 0, 256, 1).data;
   };
 
-  var _getPointTemplate = function(radius, blurFactor) {
+  /*var _getPointTemplate = function(radius, blurFactor) {
     var tplCanvas = document.createElement('canvas');
     var tplCtx = tplCanvas.getContext('2d');
     var x = radius;
@@ -276,9 +281,67 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     }
 
 
+	return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height).data;
+    return tplCanvas;
+  };*/
+  
+   var _getPointTemplate = function(radius, blurFactor, templateAlpha) {
+    var tplCanvas = document.createElement('canvas');
+    var tplCtx = tplCanvas.getContext('2d');
+    var x = radius;
+    var y = radius;
+    tplCanvas.width = tplCanvas.height = radius*2;
+	tplCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
 
+    if (blurFactor == 1) {
+      tplCtx.beginPath();
+      tplCtx.arc(x, y, radius, 0, 2 * Math.PI, false);
+      tplCtx.fillStyle = 'rgba(0,0,0,1)';
+      tplCtx.fill();
+    } else {
+      var gradient = tplCtx.createRadialGradient(x, y, radius*blurFactor, x, y, radius);
+      gradient.addColorStop(0, 'rgba(0,0,0,1)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      tplCtx.fillStyle = gradient;
+      tplCtx.fillRect(0, 0, 2*radius, 2*radius);
+    }
+
+
+	return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height).data;
     return tplCanvas;
   };
+  
+  /*)var _getPointTemplate = function(color, radius, blurFactor) {
+    var tplCanvas = document.createElement('canvas');
+    var tplCtx = tplCanvas.getContext('2d');
+    var x = radius;
+    var y = radius;
+    tplCanvas.width = tplCanvas.height = radius*2;
+	
+	var gradient = tplCtx.createRadialGradient(x, y, radius*blurFactor, x, y, radius);
+      gradient.addColorStop(0, color + ',1)');
+	  //gradient.addColorStop(0, 'rgba(255,0,0,1)');
+	  //gradient.addColorStop(0, 'rgba(0,255,0,.5)');
+      //gradient.addColorStop(1, 'rgba(0,0,255,0)');
+	  gradient.addColorStop(1, color + ',0)')
+      tplCtx.fillStyle = gradient;
+      tplCtx.fillRect(0, 0, 2*radius, 2*radius);
+
+	
+	
+	tplCtx.beginPath();
+	
+	tplCtx.arc(x, y, radius, 0, 2 * Math.PI, false);
+	
+	tplCtx.fillStyle = color;
+	tplCtx.fill();
+	
+
+
+
+    //return tplCanvas;
+	return tplCtx.getImageData(0, 0, tplCanvas.width, tplCanvas.height)
+  };*/
 
   var _prepareData = function(data) {
     var renderData = [];
@@ -329,6 +392,7 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     this._height = canvas.height = shadowCanvas.height = config.height || +(computed.height.replace(/px/,''));
 
     this.shadowCtx = shadowCanvas.getContext('2d');
+	//this.shadowCtx.globalCompositeOperation = 'destination-out';
     this.ctx = canvas.getContext('2d');
 
     // @TODO:
@@ -337,7 +401,8 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
     canvas.style.cssText = shadowCanvas.style.cssText = 'position:absolute;left:0;top:0;';
 
     container.style.position = 'relative';
-    container.appendChild(canvas);
+    //container.appendChild(shadowCanvas);
+	container.appendChild(canvas);
 
     this._palette = _getColorPalette(config);
     this._templates = {};
@@ -409,30 +474,77 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
 
         var x = point.x;
         var y = point.y;
-        var radius = point.radius;
+        var radius = point.radius | 0;
         // if value is bigger than max
         // use max as value
         var value = Math.min(point.value, max);
+		value = Math.max(value, min);
         var rectX = x - radius;
         var rectY = y - radius;
         var shadowCtx = this.shadowCtx;
+		var templateAlpha = (value-min)/(max-min);
+		
+		// Scale to discrete tenths value
+		templateAlpha = ((templateAlpha * 10 + 1) | 0) / 10;
+		
+		if (templateAlpha == 0) {
+			continue;
+		}
 
+		/*var color = 'rgba(0,0,255,1)';
+		if (value > -80) {
+			color = 'rgba(255,0,0,1)';
+		} else if (value > -100) {
+			color = 'rgba(0,255,0,1)';
+		}*/
+		/*this._palette;
+		var offset = (255*templateAlpha | 0)*4;
+		var r = this._palette[offset-3];
+		var g = this._palette[offset-2];
+		var b = this._palette[offset-1];*/
+		/*var r = 255*templateAlpha | 0;
+		var g = 255
+		var b = 255*(1-templateAlpha) | 0;*/
+		//var color = 'rgba(' + r + ',' + g + ',' + b;// + ','1)';
 
-
-
-        var tpl;
-        if (!this._templates[radius]) {
-          this._templates[radius] = tpl = _getPointTemplate(radius, blur);
+		
+		var tpl;
+		if (!this._templates[radius]) {
+			this._templates[radius] = [];
+		}
+		
+        if (!this._templates[radius][templateAlpha]) {
+          this._templates[radius][templateAlpha] = tpl = _getPointTemplate(radius, blur, templateAlpha);
         } else {
-          tpl = this._templates[radius];
+          tpl = this._templates[radius][templateAlpha];
         }
+        /*var tpl;
+        if (!this._templates[color]) {
+          this._templates[color] = tpl = _getPointTemplate(color, radius, blur);
+        } else {
+          tpl = this._templates[color];
+        }*/
         // value from minimum / value range
         // => [0, 1]
-        var templateAlpha = (value-min)/(max-min);
+        
         // this fixes #176: small values are not visible because globalAlpha < .01 cannot be read from imageData
-        shadowCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
+        //shadowCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
+		//shadowCtx.globalAlpha = .05;
+		//shadowCtx.globalCompositeOperation = 'overlay';
+		//this.shadowCtx.globalCompositeOperation = 'overlay';
+        //shadowCtx.drawImage(tpl, rectX, rectY);
+		
+		var img = this.shadowCtx.getImageData(rectX, rectY, radius*2, radius*2);
+		var imgData = img.data;
+		
+		var len = imgData.length;
 
-        shadowCtx.drawImage(tpl, rectX, rectY);
+		for (var i = 3; i < len; i+= 4) {
+			imgData[i] = Math.max(imgData[i], tpl[i]);
+		}
+		
+		this.shadowCtx.putImageData(img, rectX, rectY);
+		
 
         // update renderBoundaries
         if (rectX < this._renderBoundaries[0]) {
